@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import promptsData from '../data/prompts-zh.json';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 interface ExpandedPanelProps {
   onCollapse: () => void;
@@ -51,6 +52,15 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
       onCollapse();
     } catch (err) {
       console.error('Failed to copy text: ', err);
+    }
+  };
+
+  const handleQuit = async () => {
+    try {
+        const appWindow = getCurrentWindow();
+        await appWindow.close();
+    } catch (e) {
+        console.error("Failed to close window", e);
     }
   };
 
@@ -149,7 +159,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
         justifyContent: 'space-between',
         backgroundColor: '#f9f9f9'
       }}>
-        <button style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#666' }}>Settings</button>
+        <button onClick={handleQuit} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', fontWeight: 'bold' }}>Quit</button>
         <button onClick={onCollapse} style={{ 
             padding: '6px 12px', 
             borderRadius: '4px', 
