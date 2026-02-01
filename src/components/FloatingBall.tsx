@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+
 
 interface FloatingBallProps {
   onClick: () => void;

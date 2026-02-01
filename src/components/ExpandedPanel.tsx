@@ -4,7 +4,7 @@ import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/
 import { ask } from '@tauri-apps/plugin-dialog';
 import { exit } from '@tauri-apps/plugin-process';
 import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+
 
 interface ExpandedPanelProps {
   onCollapse: () => void;
