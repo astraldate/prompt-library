@@ -63,7 +63,7 @@ function App() {
     };
   }, []);
 
-  // Manual Drag Handlers
+  // Rust Custom Drag Handler
   const handlePointerDown = async (e: React.PointerEvent) => {
       const target = e.target as HTMLElement;
       
@@ -81,51 +81,15 @@ function App() {
       // Prevent default to avoid text selection etc
       e.preventDefault();
       
-      const container = e.currentTarget as HTMLElement;
-      container.setPointerCapture(e.pointerId);
-      
-      isDragging.current = true;
-      dragStartPos.current = { x: e.screenX, y: e.screenY };
-      
+      // Call Rust to start drag loop
       try {
-          const winPos = await getCurrentWindow().outerPosition();
-          windowStartPos.current = { x: winPos.x, y: winPos.y };
-      } catch (err) {
-          console.error("Failed to get window position", err);
-          isDragging.current = false;
-          container.releasePointerCapture(e.pointerId);
-      }
-  };
-
-  const handlePointerMove = async (e: React.PointerEvent) => {
-      if (!isDragging.current) return;
-      
-      const deltaX = e.screenX - dragStartPos.current.x;
-      const deltaY = e.screenY - dragStartPos.current.y;
-      
-      const newX = windowStartPos.current.x + deltaX;
-      const newY = windowStartPos.current.y + deltaY;
-      
-      try {
-          // Use PhysicalPosition to set absolute position
-          // Note: screenX/Y are pixels, usually map to physical pixels on Windows unless scaled.
-          // Tauri uses Logical or Physical. OuterPosition returns PhysicalPosition.
-          // So newX/newY are physical.
-          await getCurrentWindow().setPosition(new PhysicalPosition(Math.round(newX), Math.round(newY)));
-      } catch (err) {
-          console.error("Failed to set position", err);
-      }
-  };
-
-  const handlePointerUp = (e: React.PointerEvent) => {
-      if (isDragging.current) {
-          isDragging.current = false;
-          const container = e.currentTarget as HTMLElement;
-          if (container.hasPointerCapture(e.pointerId)) {
-              container.releasePointerCapture(e.pointerId);
+          if ('__TAURI_INTERNALS__' in window) {
+              await invoke('start_custom_drag');
+              // Save position after drag finishes (Rust command returns when drag ends)
+              await savePosition();
           }
-          // Save final position immediately
-          savePosition();
+      } catch (err) {
+          console.error("Failed to start custom drag", err);
       }
   };
 
