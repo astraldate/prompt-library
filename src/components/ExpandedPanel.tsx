@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import promptsData from '../data/prompts-zh.json';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { BaseDirectory, readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs';
 
 interface ExpandedPanelProps {
   onCollapse: () => void;
@@ -22,32 +23,59 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const [newAct, setNewAct] = useState('');
   const [newPrompt, setNewPrompt] = useState('');
 
-  useEffect(() => {
-    // Load favorites
-    const savedFavs = localStorage.getItem('favorites');
-    if (savedFavs) {
-      try {
-        setFavorites(JSON.parse(savedFavs));
-      } catch (e) {
-        console.error("Failed to parse favorites", e);
-      }
-    }
-    
-    // Load prompts: Try LocalStorage first, otherwise init with JSON data
-    const savedPrompts = localStorage.getItem('prompts');
-    if (savedPrompts) {
-        try {
-            setPrompts(JSON.parse(savedPrompts));
-        } catch (e) {
-            console.error("Failed to parse saved prompts", e);
-            // Fallback to JSON if parsing fails
+  const PROMPTS_FILE = 'prompts.json';
+  const FAVORITES_FILE = 'favorites.json';
+
+  // Helper to load data from FS
+  const loadData = async () => {
+    try {
+        // Ensure AppData directory exists (not strictly necessary with some OS but good practice)
+        // Actually writeTextFile handles creating file, but maybe not parent dirs?
+        // Let's just try reading.
+        
+        // 1. Load Prompts
+        const promptsExist = await exists(PROMPTS_FILE, { baseDir: BaseDirectory.AppData });
+        if (promptsExist) {
+            const content = await readTextFile(PROMPTS_FILE, { baseDir: BaseDirectory.AppData });
+            setPrompts(JSON.parse(content));
+        } else {
+            // First run: use default data
             setPrompts(promptsData as Prompt[]);
+            // Persist it immediately
+            await writeTextFile(PROMPTS_FILE, JSON.stringify(promptsData), { baseDir: BaseDirectory.AppData });
         }
-    } else {
-        // First run: load JSON data into state and save to LS
-        setPrompts(promptsData as Prompt[]);
-        localStorage.setItem('prompts', JSON.stringify(promptsData));
+
+        // 2. Load Favorites
+        const favsExist = await exists(FAVORITES_FILE, { baseDir: BaseDirectory.AppData });
+        if (favsExist) {
+            const content = await readTextFile(FAVORITES_FILE, { baseDir: BaseDirectory.AppData });
+            setFavorites(JSON.parse(content));
+        }
+    } catch (e) {
+        console.error("Failed to load data from FS", e);
+        // Fallback to localStorage if FS fails (e.g. web preview)
+        const savedPrompts = localStorage.getItem('prompts');
+        if (savedPrompts) setPrompts(JSON.parse(savedPrompts));
+        else setPrompts(promptsData as Prompt[]);
+        
+        const savedFavs = localStorage.getItem('favorites');
+        if (savedFavs) setFavorites(JSON.parse(savedFavs));
     }
+  };
+
+  const saveData = async (filename: string, data: any) => {
+      try {
+          await writeTextFile(filename, JSON.stringify(data), { baseDir: BaseDirectory.AppData });
+      } catch (e) {
+          console.error(`Failed to save ${filename}`, e);
+          // Fallback
+          if (filename === PROMPTS_FILE) localStorage.setItem('prompts', JSON.stringify(data));
+          if (filename === FAVORITES_FILE) localStorage.setItem('favorites', JSON.stringify(data));
+      }
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   const addCustomPrompt = () => {
@@ -55,7 +83,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
     const newP = { act: newAct, prompt: newPrompt };
     const updatedPrompts = [newP, ...prompts]; // Add to top
     setPrompts(updatedPrompts);
-    localStorage.setItem('prompts', JSON.stringify(updatedPrompts));
+    saveData(PROMPTS_FILE, updatedPrompts);
     setNewAct('');
     setNewPrompt('');
     setActiveTab('categories');
@@ -66,13 +94,13 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
 
     const updatedPrompts = prompts.filter(p => p.act !== actToDelete);
     setPrompts(updatedPrompts);
-    localStorage.setItem('prompts', JSON.stringify(updatedPrompts));
+    saveData(PROMPTS_FILE, updatedPrompts);
     
     // Also remove from favorites if it was there
     if (favorites.includes(actToDelete)) {
         const newFavs = favorites.filter(f => f !== actToDelete);
         setFavorites(newFavs);
-        localStorage.setItem('favorites', JSON.stringify(newFavs));
+        saveData(FAVORITES_FILE, newFavs);
     }
   };
 
@@ -84,7 +112,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
       newFavs = [...favorites, act];
     }
     setFavorites(newFavs);
-    localStorage.setItem('favorites', JSON.stringify(newFavs));
+    saveData(FAVORITES_FILE, newFavs);
   };
 
   const allPrompts = prompts;
