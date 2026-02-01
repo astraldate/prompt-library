@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import promptsData from '../data/prompts-zh.json';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { BaseDirectory, readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs';
+import { ask } from '@tauri-apps/plugin-dialog';
+import { exit } from '@tauri-apps/plugin-process';
+import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
 
 interface ExpandedPanelProps {
   onCollapse: () => void;
@@ -17,7 +20,8 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const [favorites, setFavorites] = useState<string[]>([]);
   // Unified prompts state: combines initial JSON and user additions/deletions
   const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const [activeTab, setActiveTab] = useState<'favorites' | 'categories' | 'add'>('categories');
+  const [activeTab, setActiveTab] = useState<'favorites' | 'categories' | 'add' | 'settings'>('categories');
+  const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   
   // New prompt input state
   const [newAct, setNewAct] = useState('');
@@ -29,6 +33,14 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   // Helper to load data from FS
   const loadData = async () => {
     try {
+        // Check autostart status
+        try {
+            const enabled = await isEnabled();
+            setAutoStartEnabled(enabled);
+        } catch (e) {
+            console.error("Failed to check autostart", e);
+        }
+
         // Ensure AppData directory exists (not strictly necessary with some OS but good practice)
         // Actually writeTextFile handles creating file, but maybe not parent dirs?
         // Let's just try reading.
@@ -78,6 +90,22 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
     loadData();
   }, []);
 
+  const toggleAutoStart = async () => {
+    try {
+        if (autoStartEnabled) {
+            await disable();
+            setAutoStartEnabled(false);
+        } else {
+            await enable();
+            setAutoStartEnabled(true);
+        }
+    } catch (e) {
+        console.error("Failed to toggle autostart", e);
+        // Fallback visual toggle for preview
+        setAutoStartEnabled(!autoStartEnabled);
+    }
+  };
+
   const addCustomPrompt = () => {
     if (!newAct.trim() || !newPrompt.trim()) return;
     const newP = { act: newAct, prompt: newPrompt };
@@ -89,19 +117,46 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
     setActiveTab('categories');
   };
 
-  const deletePrompt = (actToDelete: string) => {
-    if (!window.confirm(`Delete "${actToDelete}"?`)) return;
+  const deletePrompt = async (actToDelete: string) => {
+    console.log('Attempting to delete:', actToDelete);
+    let yes = false;
+    try {
+        // Use Tauri's native dialog with explicit labels
+        yes = await ask(`Are you sure you want to delete "${actToDelete}"?`, { 
+            title: 'Confirm Deletion', 
+            kind: 'warning',
+            okLabel: 'Delete',
+            cancelLabel: 'Cancel'
+        });
+        console.log('Native dialog result:', yes);
+    } catch (e) {
+        // Fallback for browser preview
+        console.warn("Native dialog failed, falling back to window.confirm", e);
+        // window.confirm returns true if OK is clicked, false otherwise
+        yes = window.confirm(`Delete "${actToDelete}"?`);
+        console.log('Window confirm result:', yes);
+    }
+    
+    // Explicitly check for boolean true
+    if (yes !== true) {
+        console.log('Deletion cancelled by user');
+        return;
+    }
 
+    console.log('Proceeding with deletion');
     const updatedPrompts = prompts.filter(p => p.act !== actToDelete);
-    setPrompts(updatedPrompts);
+    setPrompts([...updatedPrompts]); // Force new array reference
     saveData(PROMPTS_FILE, updatedPrompts);
     
     // Also remove from favorites if it was there
     if (favorites.includes(actToDelete)) {
         const newFavs = favorites.filter(f => f !== actToDelete);
-        setFavorites(newFavs);
+        setFavorites([...newFavs]);
         saveData(FAVORITES_FILE, newFavs);
     }
+    
+    // Optional: Feedback
+    // alert(`Deleted "${actToDelete}"`); // Might be annoying, but good for confirmation
   };
 
   const toggleFavorite = (act: string) => {
@@ -136,10 +191,10 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
 
   const handleQuit = async () => {
     try {
-        const appWindow = getCurrentWindow();
-        await appWindow.close();
+        await exit(0);
     } catch (e) {
-        console.error("Failed to close window", e);
+        console.error("Failed to exit", e);
+        alert("Quit action triggered (Native exit only works in built app)");
     }
   };
 
@@ -156,14 +211,54 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
       color: '#333'
     }}>
       {/* Top: Search */}
-      <div style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', gap: '8px', background: '#f5f5f5' }} data-tauri-drag-region>
+      <div 
+        style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', gap: '8px', background: '#f5f5f5', cursor: 'grab' }} 
+        data-tauri-drag-region
+        onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
+        onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
+      >
         <input 
           type="text" 
           placeholder="Search prompts..." 
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ccc', outline: 'none' }}
+          onMouseDown={(e) => e.stopPropagation()} // Prevent drag on input
         />
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button 
+            onClick={() => setActiveTab('add')}
+            title="Add New Prompt"
+            style={{ 
+                background: 'none', 
+                border: 'none', 
+                cursor: 'pointer',
+                fontWeight: activeTab === 'add' ? 'bold' : 'normal',
+                color: activeTab === 'add' ? '#3b82f6' : '#666',
+                borderBottom: activeTab === 'add' ? '2px solid #3b82f6' : 'none',
+                padding: '0 5px'
+            }}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent drag on button
+          >
+            +
+          </button>
+          <button 
+            onClick={() => setActiveTab('settings')}
+            title="Settings"
+            style={{ 
+                background: 'none', 
+                border: 'none', 
+                cursor: 'pointer',
+                fontWeight: activeTab === 'settings' ? 'bold' : 'normal',
+                color: activeTab === 'settings' ? '#3b82f6' : '#666',
+                borderBottom: activeTab === 'settings' ? '2px solid #3b82f6' : 'none',
+                padding: '0 5px'
+            }}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent drag on button
+          >
+            ⚙️
+          </button>
+        </div>
       </div>
 
       {/* Middle: Content */}
@@ -195,22 +290,38 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
           >
             Favorites
           </button>
-          <button 
-            onClick={() => setActiveTab('add')}
-            style={{ 
-                background: 'none', 
-                border: 'none', 
-                cursor: 'pointer',
-                fontWeight: activeTab === 'add' ? 'bold' : 'normal',
-                color: activeTab === 'add' ? '#3b82f6' : '#666',
-                borderBottom: activeTab === 'add' ? '2px solid #3b82f6' : 'none'
-            }}
-          >
-            + New
-          </button>
         </div>
 
-        {activeTab === 'add' ? (
+        {activeTab === 'settings' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Auto Start on Login</span>
+                    <label style={{ position: 'relative', display: 'inline-block', width: '40px', height: '20px' }}>
+                        <input 
+                            type="checkbox" 
+                            checked={autoStartEnabled}
+                            onChange={toggleAutoStart}
+                            style={{ opacity: 0, width: 0, height: 0 }}
+                        />
+                        <span style={{ 
+                            position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, 
+                            backgroundColor: autoStartEnabled ? '#3b82f6' : '#ccc', 
+                            transition: '.4s', borderRadius: '20px' 
+                        }}>
+                            <span style={{ 
+                                position: 'absolute', content: '""', height: '16px', width: '16px', 
+                                left: autoStartEnabled ? '22px' : '2px', bottom: '2px', 
+                                backgroundColor: 'white', transition: '.4s', borderRadius: '50%' 
+                            }} />
+                        </span>
+                    </label>
+                </div>
+                <div style={{ fontSize: '12px', color: '#666' }}>
+                    <p>Current Version: 0.1.5</p>
+                    <p>Click "Quit" below to exit the app.</p>
+                </div>
+            </div>
+        ) : activeTab === 'add' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <input 
                     placeholder="Title (e.g. Python Helper)" 

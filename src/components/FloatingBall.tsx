@@ -9,7 +9,11 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
     <div
       className="floating-ball"
       data-tauri-drag-region
-      onClick={onClick}
+      onClick={(e) => {
+          // Prevent click if it was a drag operation (simple heuristic could be added if needed)
+          // But Tauri usually handles this: drag doesn't fire click.
+          onClick();
+      }}
       style={{
         width: '40px',
         height: '40px',
@@ -30,10 +34,18 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = 'scale(1.1)';
         e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 198, 255, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.6)';
+        e.currentTarget.style.cursor = 'grab'; // Hint that it can be dragged
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'scale(1)';
         e.currentTarget.style.boxShadow = '0 0 15px rgba(0, 198, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.4)';
+        e.currentTarget.style.cursor = 'pointer';
+      }}
+      onMouseDown={(e) => {
+          e.currentTarget.style.cursor = 'grabbing';
+      }}
+      onMouseUp={(e) => {
+          e.currentTarget.style.cursor = 'grab';
       }}
     >
       <div style={{
@@ -46,7 +58,7 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
         left: 0,
         background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 20%)'
       }} />
-      <span style={{ pointerEvents: 'none', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.2))' }}>⚡</span>
+      <span style={{ pointerEvents: 'none', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.2))' }} title="Drag to move, Click to expand">⚡</span>
     </div>
   );
 };
