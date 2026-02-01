@@ -1,14 +1,23 @@
 import React from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 interface FloatingBallProps {
   onClick: () => void;
 }
 
 export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
+  const handleMouseDown = async (e: React.MouseEvent) => {
+    // Only drag if left button
+    if (e.button === 0) {
+      e.currentTarget.style.cursor = 'grabbing';
+      await getCurrentWindow().startDragging();
+    }
+  };
+
   return (
     <div
       className="floating-ball"
-      data-tauri-drag-region
+      onMouseDown={handleMouseDown}
       onClick={() => {
           // Prevent click if it was a drag operation (simple heuristic could be added if needed)
           // But Tauri usually handles this: drag doesn't fire click.
@@ -40,9 +49,6 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
         e.currentTarget.style.transform = 'scale(1)';
         e.currentTarget.style.boxShadow = '0 0 15px rgba(0, 198, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.4)';
         e.currentTarget.style.cursor = 'pointer';
-      }}
-      onMouseDown={(e) => {
-          e.currentTarget.style.cursor = 'grabbing';
       }}
       onMouseUp={(e) => {
           e.currentTarget.style.cursor = 'grab';

@@ -213,8 +213,12 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
       {/* Top: Search */}
       <div 
         style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', gap: '8px', background: '#f5f5f5', cursor: 'grab' }} 
-        data-tauri-drag-region
-        onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
+        onMouseDown={async (e) => {
+            if (e.button === 0) {
+                e.currentTarget.style.cursor = 'grabbing';
+                await getCurrentWindow().startDragging();
+            }
+        }}
         onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
       >
         <input 
