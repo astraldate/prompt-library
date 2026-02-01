@@ -14,9 +14,16 @@ interface Prompt {
 export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'favorites' | 'categories'>('categories');
+  // Unified prompts state: combines initial JSON and user additions/deletions
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [activeTab, setActiveTab] = useState<'favorites' | 'categories' | 'add'>('categories');
+  
+  // New prompt input state
+  const [newAct, setNewAct] = useState('');
+  const [newPrompt, setNewPrompt] = useState('');
 
   useEffect(() => {
+    // Load favorites
     const savedFavs = localStorage.getItem('favorites');
     if (savedFavs) {
       try {
@@ -25,7 +32,49 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
         console.error("Failed to parse favorites", e);
       }
     }
+    
+    // Load prompts: Try LocalStorage first, otherwise init with JSON data
+    const savedPrompts = localStorage.getItem('prompts');
+    if (savedPrompts) {
+        try {
+            setPrompts(JSON.parse(savedPrompts));
+        } catch (e) {
+            console.error("Failed to parse saved prompts", e);
+            // Fallback to JSON if parsing fails
+            setPrompts(promptsData as Prompt[]);
+        }
+    } else {
+        // First run: load JSON data into state and save to LS
+        setPrompts(promptsData as Prompt[]);
+        localStorage.setItem('prompts', JSON.stringify(promptsData));
+    }
   }, []);
+
+  const addCustomPrompt = () => {
+    if (!newAct.trim() || !newPrompt.trim()) return;
+    const newP = { act: newAct, prompt: newPrompt };
+    const updatedPrompts = [newP, ...prompts]; // Add to top
+    setPrompts(updatedPrompts);
+    localStorage.setItem('prompts', JSON.stringify(updatedPrompts));
+    setNewAct('');
+    setNewPrompt('');
+    setActiveTab('categories');
+  };
+
+  const deletePrompt = (actToDelete: string) => {
+    if (!window.confirm(`Delete "${actToDelete}"?`)) return;
+
+    const updatedPrompts = prompts.filter(p => p.act !== actToDelete);
+    setPrompts(updatedPrompts);
+    localStorage.setItem('prompts', JSON.stringify(updatedPrompts));
+    
+    // Also remove from favorites if it was there
+    if (favorites.includes(actToDelete)) {
+        const newFavs = favorites.filter(f => f !== actToDelete);
+        setFavorites(newFavs);
+        localStorage.setItem('favorites', JSON.stringify(newFavs));
+    }
+  };
 
   const toggleFavorite = (act: string) => {
     let newFavs;
@@ -38,12 +87,14 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
     localStorage.setItem('favorites', JSON.stringify(newFavs));
   };
 
-  const filteredPrompts = (promptsData as Prompt[]).filter(p => 
+  const allPrompts = prompts;
+
+  const filteredPrompts = allPrompts.filter(p => 
     p.act.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const displayPrompts = activeTab === 'favorites' 
-    ? (promptsData as Prompt[]).filter(p => favorites.includes(p.act))
+    ? allPrompts.filter(p => favorites.includes(p.act))
     : filteredPrompts;
 
   const handlePromptClick = async (promptText: string) => {
@@ -116,38 +167,109 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
           >
             Favorites
           </button>
+          <button 
+            onClick={() => setActiveTab('add')}
+            style={{ 
+                background: 'none', 
+                border: 'none', 
+                cursor: 'pointer',
+                fontWeight: activeTab === 'add' ? 'bold' : 'normal',
+                color: activeTab === 'add' ? '#3b82f6' : '#666',
+                borderBottom: activeTab === 'add' ? '2px solid #3b82f6' : 'none'
+            }}
+          >
+            + New
+          </button>
         </div>
 
-        {displayPrompts.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#999', marginTop: '20px' }}>No prompts found</div>
-        ) : (
-            displayPrompts.map((p) => (
-            <div key={p.act} 
-            onClick={() => handlePromptClick(p.prompt)}
-            style={{ 
-                padding: '8px', 
-                borderBottom: '1px solid #f0f0f0', 
-                cursor: 'pointer',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                transition: 'background 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-                <span title={p.prompt} style={{ fontSize: '14px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.act}</span>
-                <span 
-                onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFavorite(p.act);
-                }}
-                style={{ cursor: 'pointer', color: favorites.includes(p.act) ? '#fbbf24' : '#e5e7eb', fontSize: '18px', marginLeft: '8px' }}
+        {activeTab === 'add' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <input 
+                    placeholder="Title (e.g. Python Helper)" 
+                    value={newAct}
+                    onChange={(e) => setNewAct(e.target.value)}
+                    style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
+                />
+                <textarea 
+                    placeholder="Enter prompt content..." 
+                    value={newPrompt}
+                    onChange={(e) => setNewPrompt(e.target.value)}
+                    style={{ 
+                        padding: '8px', 
+                        border: '1px solid #ccc', 
+                        borderRadius: '4px',
+                        minHeight: '100px',
+                        resize: 'vertical'
+                    }}
+                />
+                <button 
+                    onClick={addCustomPrompt}
+                    disabled={!newAct || !newPrompt}
+                    style={{ 
+                        padding: '8px', 
+                        background: '#3b82f6', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        opacity: (!newAct || !newPrompt) ? 0.5 : 1
+                    }}
                 >
-                ★
-                </span>
+                    Save Prompt
+                </button>
             </div>
-            ))
+        ) : (
+            displayPrompts.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#999', marginTop: '20px' }}>No prompts found</div>
+            ) : (
+                displayPrompts.map((p) => (
+                <div key={p.act} 
+                onClick={() => handlePromptClick(p.prompt)}
+                style={{ 
+                    padding: '8px', 
+                    borderBottom: '1px solid #f0f0f0', 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    transition: 'background 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                    <span title={p.prompt} style={{ fontSize: '14px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.act}</span>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <span 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            deletePrompt(p.act);
+                        }}
+                        title="Delete"
+                        style={{ 
+                            cursor: 'pointer', 
+                            color: '#ef4444', 
+                            fontSize: '16px', 
+                            padding: '0 4px',
+                            opacity: 0.6
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+                    >
+                    🗑️
+                    </span>
+                    <span 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFavorite(p.act);
+                    }}
+                    style={{ cursor: 'pointer', color: favorites.includes(p.act) ? '#fbbf24' : '#e5e7eb', fontSize: '18px', marginLeft: '8px' }}
+                    >
+                    ★
+                    </span>
+                </div>
+                </div>
+                ))
+            )
         )}
       </div>
 
