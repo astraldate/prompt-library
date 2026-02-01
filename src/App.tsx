@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
 import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
 import { FloatingBall } from "./components/FloatingBall";
 import { ExpandedPanel } from "./components/ExpandedPanel";
@@ -11,6 +11,11 @@ const WINDOW_STATE_FILE = 'window-state.json';
 function App() {
   const [isOpen, setIsOpen] = useState(false);
   const saveIntervalRef = useRef<number | null>(null);
+
+  // Manual Drag State
+  const isDragging = useRef(false);
+  const dragStartPos = useRef({ x: 0, y: 0 }); // Mouse screen pos
+  const windowStartPos = useRef({ x: 0, y: 0 }); // Window pos
 
   const savePosition = async () => {
       try {
@@ -56,7 +61,6 @@ function App() {
     initWindow();
 
     // Start periodic position saving (every 3 seconds)
-    // This is a simple way to persist position after dragging without complex event listeners
     saveIntervalRef.current = window.setInterval(savePosition, 3000);
 
     return () => {
@@ -64,33 +68,71 @@ function App() {
     };
   }, []);
 
-  // Global drag handler
-  useEffect(() => {
-      const handleGlobalMouseDown = async (e: MouseEvent) => {
-          const target = e.target as HTMLElement;
-          
-          // 1. Check if the target is interactive (button, input, etc.) - If so, ignore drag
-          if (target.closest('button, input, textarea, [data-interactive="true"]')) {
-              return;
-          }
+  // Manual Drag Handlers
+  const handlePointerDown = async (e: React.PointerEvent) => {
+      const target = e.target as HTMLElement;
+      
+      // 1. Check interactive
+      if (target.closest('button, input, textarea, [data-interactive="true"]')) {
+          return;
+      }
 
-          // 2. Check if the target is within a designated drag region
-          // We also treat the main container as a drag region if it's collapsed (ball mode)
-          // But to be safe, we rely on the attributes.
-          const dragTarget = target.closest('[data-drag-region="true"]');
-          
-          if (dragTarget && e.button === 0) {
-              if ('__TAURI_INTERNALS__' in window) {
-                   await getCurrentWindow().startDragging();
-                   // Position will be saved by the interval
-              }
-          }
-      };
+      // 2. Check drag region
+      const dragTarget = target.closest('[data-drag-region="true"]');
+      if (!dragTarget) return;
 
-      // Use capture phase to ensure we catch it before anything else
-      document.addEventListener('mousedown', handleGlobalMouseDown, true);
-      return () => document.removeEventListener('mousedown', handleGlobalMouseDown, true);
-  }, []);
+      if (e.button !== 0) return;
+
+      // Prevent default to avoid text selection etc
+      e.preventDefault();
+      
+      const container = e.currentTarget as HTMLElement;
+      container.setPointerCapture(e.pointerId);
+      
+      isDragging.current = true;
+      dragStartPos.current = { x: e.screenX, y: e.screenY };
+      
+      try {
+          const winPos = await getCurrentWindow().outerPosition();
+          windowStartPos.current = { x: winPos.x, y: winPos.y };
+      } catch (err) {
+          console.error("Failed to get window position", err);
+          isDragging.current = false;
+          container.releasePointerCapture(e.pointerId);
+      }
+  };
+
+  const handlePointerMove = async (e: React.PointerEvent) => {
+      if (!isDragging.current) return;
+      
+      const deltaX = e.screenX - dragStartPos.current.x;
+      const deltaY = e.screenY - dragStartPos.current.y;
+      
+      const newX = windowStartPos.current.x + deltaX;
+      const newY = windowStartPos.current.y + deltaY;
+      
+      try {
+          // Use PhysicalPosition to set absolute position
+          // Note: screenX/Y are pixels, usually map to physical pixels on Windows unless scaled.
+          // Tauri uses Logical or Physical. OuterPosition returns PhysicalPosition.
+          // So newX/newY are physical.
+          await getCurrentWindow().setPosition(new PhysicalPosition(Math.round(newX), Math.round(newY)));
+      } catch (err) {
+          console.error("Failed to set position", err);
+      }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+      if (isDragging.current) {
+          isDragging.current = false;
+          const container = e.currentTarget as HTMLElement;
+          if (container.hasPointerCapture(e.pointerId)) {
+              container.releasePointerCapture(e.pointerId);
+          }
+          // Save final position immediately
+          savePosition();
+      }
+  };
 
   const toggleWindow = async (open: boolean) => {
     try {
@@ -113,15 +155,22 @@ function App() {
   };
 
   return (
-    <div className="container" style={{ 
-      width: '100vw', 
-      height: '100vh', 
-      overflow: 'hidden',
-      background: 'transparent', 
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center'
-    }}>
+    <div 
+      className="container" 
+      style={{ 
+        width: '100vw', 
+        height: '100vh', 
+        overflow: 'hidden',
+        background: 'transparent', 
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp} // Handle interruption
+    >
       {isOpen ? (
         <ExpandedPanel onCollapse={() => toggleWindow(false)} />
       ) : (
