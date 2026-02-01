@@ -6,7 +6,7 @@ interface FloatingBallProps {
 }
 
 export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
-  const handleMouseDown = async (e: React.MouseEvent) => {
+  const handleMouseDown = async (e: React.MouseEvent<HTMLDivElement>) => {
     // Only drag if left button
     if (e.button === 0) {
       e.currentTarget.style.cursor = 'grabbing';

@@ -4,6 +4,7 @@ import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/
 import { ask } from '@tauri-apps/plugin-dialog';
 import { exit } from '@tauri-apps/plugin-process';
 import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 interface ExpandedPanelProps {
   onCollapse: () => void;
@@ -213,13 +214,13 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
       {/* Top: Search */}
       <div 
         style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', gap: '8px', background: '#f5f5f5', cursor: 'grab' }} 
-        onMouseDown={async (e) => {
+        onMouseDown={async (e: React.MouseEvent<HTMLDivElement>) => {
             if (e.button === 0) {
                 e.currentTarget.style.cursor = 'grabbing';
                 await getCurrentWindow().startDragging();
             }
         }}
-        onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
+        onMouseUp={(e: React.MouseEvent<HTMLDivElement>) => e.currentTarget.style.cursor = 'grab'}
       >
         <input 
           type="text" 
