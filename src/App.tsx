@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
 import { FloatingBall } from "./components/FloatingBall";
 import { ExpandedPanel } from "./components/ExpandedPanel";
@@ -11,11 +11,6 @@ const WINDOW_STATE_FILE = 'window-state.json';
 function App() {
   const [isOpen, setIsOpen] = useState(false);
   const saveIntervalRef = useRef<number | null>(null);
-
-  // Manual Drag State
-  const isDragging = useRef(false);
-  const dragStartPos = useRef({ x: 0, y: 0 }); // Mouse screen pos
-  const windowStartPos = useRef({ x: 0, y: 0 }); // Window pos
 
   const savePosition = async () => {
       try {
@@ -167,9 +162,6 @@ function App() {
         alignItems: 'center'
       }}
       onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp} // Handle interruption
     >
       {isOpen ? (
         <ExpandedPanel onCollapse={() => toggleWindow(false)} />
