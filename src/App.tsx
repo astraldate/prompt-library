@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { invoke } from "@tauri-apps/api/core";
 import { FloatingBall } from "./components/FloatingBall";
 import { ExpandedPanel } from "./components/ExpandedPanel";
 import "./App.css";
@@ -13,8 +13,7 @@ function App() {
         try {
             // Check if running in Tauri
             if ('__TAURI_INTERNALS__' in window) {
-                const appWindow = getCurrentWindow();
-                await appWindow.setSize(new LogicalSize(40, 40));
+                await invoke('set_window_size', { width: 40.0, height: 40.0 });
             }
         } catch (e) {
             console.error("Error setting initial size:", e);
@@ -26,11 +25,12 @@ function App() {
   const toggleWindow = async (open: boolean) => {
     try {
         if ('__TAURI_INTERNALS__' in window) {
-            const appWindow = getCurrentWindow();
             if (open) {
-                await appWindow.setSize(new LogicalSize(300, 400));
+                // Expand
+                await invoke('set_window_size', { width: 300.0, height: 400.0 });
             } else {
-                await appWindow.setSize(new LogicalSize(40, 40));
+                // Collapse
+                await invoke('set_window_size', { width: 40.0, height: 40.0 });
             }
         }
     } catch (e) {
