@@ -219,7 +219,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
         onMouseDown={async (e: React.MouseEvent<HTMLDivElement>) => {
             if (e.button === 0) {
                 e.currentTarget.style.cursor = 'grabbing';
-                await getCurrentWindow().startDragging();
+                // Global handler in App.tsx handles startDragging
             }
         }}
         onMouseUp={(e: React.MouseEvent<HTMLDivElement>) => e.currentTarget.style.cursor = 'grab'}

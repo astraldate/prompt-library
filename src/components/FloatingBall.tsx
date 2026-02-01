@@ -10,7 +10,7 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
     // Only drag if left button
     if (e.button === 0) {
       e.currentTarget.style.cursor = 'grabbing';
-      await getCurrentWindow().startDragging();
+      // Global handler in App.tsx handles startDragging
     }
   };
 
