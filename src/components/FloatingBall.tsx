@@ -17,6 +17,8 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
   return (
     <div
       className="floating-ball"
+      data-drag-region="true"
+      data-tauri-drag-region
       onMouseDown={handleMouseDown}
       onClick={() => {
           // Prevent click if it was a drag operation (simple heuristic could be added if needed)

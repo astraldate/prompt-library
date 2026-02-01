@@ -214,6 +214,8 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
       {/* Top: Search */}
       <div 
         style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', gap: '8px', background: '#f5f5f5', cursor: 'grab' }} 
+        data-drag-region="true"
+        data-tauri-drag-region
         onMouseDown={async (e: React.MouseEvent<HTMLDivElement>) => {
             if (e.button === 0) {
                 e.currentTarget.style.cursor = 'grabbing';
