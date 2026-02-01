@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import promptsData from '../data/prompts-zh.json';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { BaseDirectory, readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs';
+import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { exit } from '@tauri-apps/plugin-process';
 import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
@@ -41,9 +40,9 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
             console.error("Failed to check autostart", e);
         }
 
-        // Ensure AppData directory exists (not strictly necessary with some OS but good practice)
-        // Actually writeTextFile handles creating file, but maybe not parent dirs?
-        // Let's just try reading.
+        // Ensure AppData directory exists
+        // Use fs.exists instead of mkdir which was unused and potentially problematic without recursive flag in old API
+        // writeTextFile handles directory creation if configured correctly, but let's just rely on lazy creation
         
         // 1. Load Prompts
         const promptsExist = await exists(PROMPTS_FILE, { baseDir: BaseDirectory.AppData });
@@ -194,7 +193,8 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
         await exit(0);
     } catch (e) {
         console.error("Failed to exit", e);
-        alert("Quit action triggered (Native exit only works in built app)");
+        // Fallback for preview or if exit fails
+        // alert("Quit action triggered (Native exit only works in built app)");
     }
   };
 

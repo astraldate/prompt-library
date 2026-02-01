@@ -9,7 +9,7 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
     <div
       className="floating-ball"
       data-tauri-drag-region
-      onClick={(e) => {
+      onClick={() => {
           // Prevent click if it was a drag operation (simple heuristic could be added if needed)
           // But Tauri usually handles this: drag doesn't fire click.
           onClick();
