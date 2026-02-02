@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
-import { register } from '@tauri-apps/plugin-global-shortcut';
+import { register, ShortcutEvent } from '@tauri-apps/plugin-global-shortcut';
 import { FloatingBall } from "./components/FloatingBall";
 import { ExpandedPanel } from "./components/ExpandedPanel";
 import "./App.css";
