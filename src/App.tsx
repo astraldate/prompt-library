@@ -52,7 +52,7 @@ function App() {
                 
                 // Register Global Shortcut: Alt+Space
                 try {
-                    await register('Alt+Space', async (event) => {
+                    await register('Alt+Space', async (event: ShortcutEvent) => {
                         if (event.state === 'Pressed') {
                             const win = getCurrentWindow();
                             const isVisible = await win.isVisible();
