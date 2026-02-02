@@ -2,6 +2,7 @@
 use tauri::{Manager, LogicalSize, PhysicalPosition};
 use tauri_plugin_autostart::MacosLauncher;
 use std::{thread, time::Duration};
+use enigo::{Enigo, Key, Keyboard, Settings, Direction};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
@@ -58,12 +59,6 @@ async fn start_custom_drag(app_handle: tauri::AppHandle) -> Result<(), String> {
                         let new_x = current_cursor.x - offset_x;
                         let new_y = current_cursor.y - offset_y;
                         
-                        // Update window position
-                        // We use run_on_main_thread or just call it directly?
-                        // Window methods are thread-safe in Tauri v2 mostly, but let's check.
-                        // Actually, it's safer to dispatch. But we are in a separate thread.
-                        // Let's try calling directly, if it fails we might need dispatch.
-                        // Wait, we can't move 'window' into thread easily if it's not Clone (it is Clone).
                         let _ = window.set_position(PhysicalPosition::new(new_x, new_y));
                     }
                 }
@@ -77,8 +72,37 @@ async fn start_custom_drag(app_handle: tauri::AppHandle) -> Result<(), String> {
     #[cfg(not(target_os = "windows"))]
     {
         // Fallback for non-windows (though user is on windows)
-        // Just call standard start_dragging as fallback
         let _ = window.start_dragging();
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn paste_to_cursor(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let window = app_handle.get_webview_window("main").ok_or("No main window")?;
+    
+    // Hide window first to return focus to previous app
+    window.hide().map_err(|e| e.to_string())?;
+    
+    // Small delay to ensure focus switch
+    thread::sleep(Duration::from_millis(150));
+
+    // Simulate Paste
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    
+    #[cfg(target_os = "macos")]
+    {
+        let _ = enigo.key(Key::Meta, Direction::Press);
+        let _ = enigo.key(Key::Unicode('v'), Direction::Click);
+        let _ = enigo.key(Key::Meta, Direction::Release);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = enigo.key(Key::Control, Direction::Press);
+        let _ = enigo.key(Key::Unicode('v'), Direction::Click);
+        let _ = enigo.key(Key::Control, Direction::Release);
     }
 
     Ok(())
@@ -91,11 +115,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = app.get_webview_window("main").expect("no main window").set_focus();
         }))
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, set_window_size, start_custom_drag])
+        .invoke_handler(tauri::generate_handler![greet, set_window_size, start_custom_drag, paste_to_cursor])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
