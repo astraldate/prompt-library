@@ -218,12 +218,11 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const handlePromptClick = async (promptText: string) => {
     try {
       await navigator.clipboard.writeText(promptText);
-      // Call Rust to paste
+      // Collapse first to restore ball state
+      onCollapse();
+      // Then call Rust to paste (it will hide window momentarily and show it again)
       if ('__TAURI_INTERNALS__' in window) {
-          // This will hide window and simulate paste
           await invoke('paste_to_cursor');
-      } else {
-          onCollapse(); // Fallback for web preview
       }
     } catch (err) {
       console.error('Failed to copy text: ', err);

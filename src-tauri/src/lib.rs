@@ -104,7 +104,14 @@ async fn paste_to_cursor(app_handle: tauri::AppHandle) -> Result<(), String> {
         let _ = enigo.key(Key::Unicode('v'), Direction::Click);
         let _ = enigo.key(Key::Control, Direction::Release);
     }
-
+    
+    // Show window again after paste
+    thread::sleep(Duration::from_millis(50));
+    window.show().map_err(|e| e.to_string())?;
+    // Optionally focus it back if needed, but for a "helper" tool, maybe not strictly required immediately?
+    // Actually set_window_size calls set_focus, so if we just show it, it might not be focused.
+    // But since it's the ball, maybe that's fine.
+    
     Ok(())
 }
 
