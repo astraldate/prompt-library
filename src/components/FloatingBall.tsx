@@ -20,7 +20,7 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
       data-drag-region="true"
       data-tauri-drag-region
       onMouseDown={handleMouseDown}
-      onClick={(e) => {
+      onClick={() => {
           // Prevent click if it was a drag operation
           // Since we use a blocking Rust drag, we need a way to know if it moved.
           // However, simpler is: if we handled onMouseDown/PointerDown for drag,
