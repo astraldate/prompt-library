@@ -2781,7 +2781,7 @@ dependencies = [
 
 [[package]]
 name = "prompt-library"
-version = "0.1.26"
+version = "0.1.27"
 dependencies = [
  "enigo",
  "serde",

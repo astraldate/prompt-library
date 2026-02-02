@@ -158,11 +158,13 @@ function App() {
       }}
       onPointerDown={handlePointerDown}
       onClickCapture={(e) => {
-          // If we just finished dragging, stop the click from propagating
-          if (Math.abs(e.screenX - dragStartPos.current.x) > 5 || Math.abs(e.screenY - dragStartPos.current.y) > 5) {
-             // Only stop propagation for the window toggle, but allow internal interactions if they weren't the drag target?
-             // Actually, if we dragged the whole window, we shouldn't click ANYTHING inside.
-             e.stopPropagation();
+          // Only block if we were actively handling a drag on a drag region
+          if (isDragActive.current) {
+              if (Math.abs(e.screenX - dragStartPos.current.x) > 5 || Math.abs(e.screenY - dragStartPos.current.y) > 5) {
+                 e.stopPropagation();
+              }
+              // Reset flag
+              isDragActive.current = false;
           }
       }}
     >
