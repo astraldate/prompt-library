@@ -151,6 +151,12 @@ function App() {
         alignItems: 'center'
       }}
       onPointerDown={handlePointerDown}
+      onClickCapture={(e) => {
+          // If we just finished dragging, stop the click from propagating
+          if (Math.abs(e.screenX - dragStartPos.current.x) > 5 || Math.abs(e.screenY - dragStartPos.current.y) > 5) {
+             e.stopPropagation();
+          }
+      }}
     >
       {isOpen ? (
         <ExpandedPanel onCollapse={() => toggleWindow(false)} />
