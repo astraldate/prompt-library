@@ -415,7 +415,6 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                     </label>
                 </div>
                 <div style={{ fontSize: '12px', color: '#666' }}>
-                    <p>Current Version: 1.0.2</p>
                     <p>Click "Quit" below to exit the app.</p>
                 </div>
             </div>
