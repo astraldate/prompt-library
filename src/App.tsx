@@ -84,6 +84,7 @@ function App() {
   }, []);
 
   const dragStartPos = useRef({ x: 0, y: 0 });
+  const isDragActive = useRef(false);
 
   // Rust Custom Drag Handler
   const handlePointerDown = async (e: React.PointerEvent) => {
@@ -91,17 +92,22 @@ function App() {
       
       // 1. Check interactive
       if (target.closest('button, input, textarea, [data-interactive="true"]')) {
+          isDragActive.current = false;
           return;
       }
 
       // 2. Check drag region
       const dragTarget = target.closest('[data-drag-region="true"]');
-      if (!dragTarget) return;
+      if (!dragTarget) {
+          isDragActive.current = false;
+          return;
+      }
 
       if (e.button !== 0) return;
 
       // Record start pos
       dragStartPos.current = { x: e.screenX, y: e.screenY };
+      isDragActive.current = true;
 
       // Prevent default to avoid text selection etc
       e.preventDefault();
@@ -154,6 +160,8 @@ function App() {
       onClickCapture={(e) => {
           // If we just finished dragging, stop the click from propagating
           if (Math.abs(e.screenX - dragStartPos.current.x) > 5 || Math.abs(e.screenY - dragStartPos.current.y) > 5) {
+             // Only stop propagation for the window toggle, but allow internal interactions if they weren't the drag target?
+             // Actually, if we dragged the whole window, we shouldn't click ANYTHING inside.
              e.stopPropagation();
           }
       }}
