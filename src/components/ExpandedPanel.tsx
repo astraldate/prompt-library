@@ -20,7 +20,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const [favorites, setFavorites] = useState<string[]>([]);
   // Unified prompts state: combines initial JSON and user additions/deletions
   const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const [activeTab, setActiveTab] = useState<'favorites' | 'categories' | 'add' | 'settings'>('categories');
+  const [activeTab, setActiveTab] = useState<'favorites' | 'categories' | 'add' | 'settings' | 'handbook'>('categories');
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   
   // New prompt input state
@@ -310,6 +310,22 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
           >
             ⚙️
           </button>
+          <button 
+            onClick={() => setActiveTab('handbook')}
+            title="Handbook"
+            style={{ 
+                background: 'none', 
+                border: 'none', 
+                cursor: 'pointer',
+                fontWeight: activeTab === 'handbook' ? 'bold' : 'normal',
+                color: activeTab === 'handbook' ? '#3b82f6' : '#666',
+                borderBottom: activeTab === 'handbook' ? '2px solid #3b82f6' : 'none',
+                padding: '0 5px'
+            }}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent drag on button
+          >
+            ?
+          </button>
         </div>
       </div>
 
@@ -344,7 +360,37 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
           </button>
         </div>
 
-        {activeTab === 'settings' ? (
+        {activeTab === 'handbook' ? (
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '5px', fontSize: '13px', lineHeight: '1.5' }}>
+                <h3 style={{ margin: '0 0 10px 0' }}>Operation Handbook</h3>
+                
+                <div>
+                    <strong>🖱️ Basic Operations:</strong>
+                    <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
+                        <li><strong>Left Click:</strong> Copy prompt to clipboard, auto-hide window, and paste to cursor position.</li>
+                        <li><strong>Right Click:</strong> Edit the selected prompt.</li>
+                        <li><strong>Hover:</strong> Preview full prompt content.</li>
+                        <li><strong>Drag:</strong> Hold left click on title bar or floating ball to move window.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <strong>⌨️ Shortcuts:</strong>
+                    <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
+                        <li><strong>Alt + Space:</strong> Toggle window visibility (Global).</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <strong>⚙️ Features:</strong>
+                    <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
+                        <li><strong>Search:</strong> Filter prompts by keywords.</li>
+                        <li><strong>Favorites:</strong> Star your most used prompts for quick access.</li>
+                        <li><strong>Auto-start:</strong> Enable in Settings to launch on login.</li>
+                    </ul>
+                </div>
+            </div>
+        ) : activeTab === 'settings' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span>Auto Start on Login</span>
@@ -369,7 +415,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                     </label>
                 </div>
                 <div style={{ fontSize: '12px', color: '#666' }}>
-                    <p>Current Version: 0.1.20</p>
+                    <p>Current Version: 1.0.2</p>
                     <p>Click "Quit" below to exit the app.</p>
                 </div>
             </div>
@@ -437,7 +483,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                title="Left click to paste, Right click to edit"
+                title={p.prompt} // Use title attribute for hover preview
                 >
                     <span style={{ fontSize: '14px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.act}</span>
                 <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
