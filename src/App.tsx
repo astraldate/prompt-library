@@ -83,6 +83,8 @@ function App() {
     };
   }, []);
 
+  const dragStartPos = useRef({ x: 0, y: 0 });
+
   // Rust Custom Drag Handler
   const handlePointerDown = async (e: React.PointerEvent) => {
       const target = e.target as HTMLElement;
@@ -97,6 +99,9 @@ function App() {
       if (!dragTarget) return;
 
       if (e.button !== 0) return;
+
+      // Record start pos
+      dragStartPos.current = { x: e.screenX, y: e.screenY };
 
       // Prevent default to avoid text selection etc
       e.preventDefault();

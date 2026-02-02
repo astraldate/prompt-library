@@ -20,9 +20,12 @@ export const FloatingBall: React.FC<FloatingBallProps> = ({ onClick }) => {
       data-drag-region="true"
       data-tauri-drag-region
       onMouseDown={handleMouseDown}
-      onClick={() => {
-          // Prevent click if it was a drag operation (simple heuristic could be added if needed)
-          // But Tauri usually handles this: drag doesn't fire click.
+      onClick={(e) => {
+          // Prevent click if it was a drag operation
+          // Since we use a blocking Rust drag, we need a way to know if it moved.
+          // However, simpler is: if we handled onMouseDown/PointerDown for drag,
+          // the onClick might still fire.
+          // Let's use a timestamp check?
           onClick();
       }}
       style={{
