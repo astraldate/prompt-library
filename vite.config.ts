@@ -29,4 +29,15 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    rollupOptions: {
+      external: [
+        // Ensure this is not treated as external in production unless intended,
+        // but if it's failing to resolve, it might be an issue with how it's imported or installed.
+        // Actually, for Tauri v2 plugins, they should be bundled.
+        // The error suggests it IS being treated as external or can't be found.
+        // Let's NOT mark it as external, but ensure module resolution works.
+      ]
+    }
+  }
 }));
