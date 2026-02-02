@@ -4,7 +4,7 @@ import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/
 import { ask } from '@tauri-apps/plugin-dialog';
 import { exit } from '@tauri-apps/plugin-process';
 import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
-
+import { invoke } from '@tauri-apps/api/core';
 
 interface ExpandedPanelProps {
   onCollapse: () => void;
@@ -26,6 +26,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   // New prompt input state
   const [newAct, setNewAct] = useState('');
   const [newPrompt, setNewPrompt] = useState('');
+  const [editingOldAct, setEditingOldAct] = useState<string | null>(null);
 
   const PROMPTS_FILE = 'prompts.json';
   const FAVORITES_FILE = 'favorites.json';
@@ -106,15 +107,49 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
     }
   };
 
-  const addCustomPrompt = () => {
+  const savePrompt = () => {
     if (!newAct.trim() || !newPrompt.trim()) return;
-    const newP = { act: newAct, prompt: newPrompt };
-    const updatedPrompts = [newP, ...prompts]; // Add to top
+    
+    let updatedPrompts = [...prompts];
+    
+    if (editingOldAct) {
+        // Update existing
+        updatedPrompts = updatedPrompts.map(p => 
+            p.act === editingOldAct ? { act: newAct, prompt: newPrompt } : p
+        );
+        // If name changed, update favorites too
+        if (editingOldAct !== newAct && favorites.includes(editingOldAct)) {
+            const newFavs = favorites.map(f => f === editingOldAct ? newAct : f);
+            setFavorites(newFavs);
+            saveData(FAVORITES_FILE, newFavs);
+        }
+    } else {
+        // Add new
+        updatedPrompts = [{ act: newAct, prompt: newPrompt }, ...prompts];
+    }
+    
     setPrompts(updatedPrompts);
     saveData(PROMPTS_FILE, updatedPrompts);
+    
+    // Reset
     setNewAct('');
     setNewPrompt('');
+    setEditingOldAct(null);
     setActiveTab('categories');
+  };
+
+  const cancelEdit = () => {
+      setNewAct('');
+      setNewPrompt('');
+      setEditingOldAct(null);
+      setActiveTab('categories');
+  };
+
+  const handleEditPrompt = (p: Prompt) => {
+      setNewAct(p.act);
+      setNewPrompt(p.prompt);
+      setEditingOldAct(p.act);
+      setActiveTab('add');
   };
 
   const deletePrompt = async (actToDelete: string) => {
@@ -183,7 +218,13 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const handlePromptClick = async (promptText: string) => {
     try {
       await navigator.clipboard.writeText(promptText);
-      onCollapse();
+      // Call Rust to paste
+      if ('__TAURI_INTERNALS__' in window) {
+          // This will hide window and simulate paste
+          await invoke('paste_to_cursor');
+      } else {
+          onCollapse(); // Fallback for web preview
+      }
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
@@ -215,7 +256,6 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
       <div 
         style={{ padding: '10px', borderBottom: '1px solid #eee', display: 'flex', gap: '8px', background: '#f5f5f5', cursor: 'grab' }} 
         data-drag-region="true"
-        data-tauri-drag-region
         onMouseDown={async (e: React.MouseEvent<HTMLDivElement>) => {
             if (e.button === 0) {
                 e.currentTarget.style.cursor = 'grabbing';
@@ -234,7 +274,13 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
         />
         <div style={{ display: 'flex', gap: '4px' }}>
           <button 
-            onClick={() => setActiveTab('add')}
+            onClick={() => {
+                // If editing, ask or reset? Let's just reset if clicking add explicitly
+                setNewAct('');
+                setNewPrompt('');
+                setEditingOldAct(null);
+                setActiveTab('add');
+            }}
             title="Add New Prompt"
             style={{ 
                 background: 'none', 
@@ -324,12 +370,18 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                     </label>
                 </div>
                 <div style={{ fontSize: '12px', color: '#666' }}>
-                    <p>Current Version: 0.1.5</p>
+                    <p>Current Version: 0.1.20</p>
                     <p>Click "Quit" below to exit the app.</p>
                 </div>
             </div>
         ) : activeTab === 'add' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 'bold' }}>{editingOldAct ? 'Edit Prompt' : 'New Prompt'}</span>
+                    {editingOldAct && (
+                        <button onClick={cancelEdit} style={{ border: 'none', background: 'none', color: '#666', cursor: 'pointer' }}>Cancel</button>
+                    )}
+                </div>
                 <input 
                     placeholder="Title (e.g. Python Helper)" 
                     value={newAct}
@@ -349,7 +401,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                     }}
                 />
                 <button 
-                    onClick={addCustomPrompt}
+                    onClick={savePrompt}
                     disabled={!newAct || !newPrompt}
                     style={{ 
                         padding: '8px', 
@@ -361,7 +413,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                         opacity: (!newAct || !newPrompt) ? 0.5 : 1
                     }}
                 >
-                    Save Prompt
+                    {editingOldAct ? 'Update Prompt' : 'Save Prompt'}
                 </button>
             </div>
         ) : (
@@ -371,6 +423,10 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                 displayPrompts.map((p) => (
                 <div key={p.act} 
                 onClick={() => handlePromptClick(p.prompt)}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    handleEditPrompt(p);
+                }}
                 style={{ 
                     padding: '8px', 
                     borderBottom: '1px solid #f0f0f0', 
@@ -382,8 +438,9 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                title="Left click to paste, Right click to edit"
                 >
-                    <span title={p.prompt} style={{ fontSize: '14px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.act}</span>
+                    <span style={{ fontSize: '14px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.act}</span>
                 <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                     <span 
                         onClick={(e) => {

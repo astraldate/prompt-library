@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
+import { register } from '@tauri-apps/plugin-global-shortcut';
 import { FloatingBall } from "./components/FloatingBall";
 import { ExpandedPanel } from "./components/ExpandedPanel";
 import "./App.css";
@@ -48,6 +49,25 @@ function App() {
                 await loadPosition();
                 // Set initial size (collapsed) - Increased to 80 to prevent clipping
                 await invoke('set_window_size', { width: 80.0, height: 80.0 });
+                
+                // Register Global Shortcut: Alt+Space
+                try {
+                    await register('Alt+Space', async (event) => {
+                        if (event.state === 'Pressed') {
+                            const win = getCurrentWindow();
+                            const isVisible = await win.isVisible();
+                            if (isVisible) {
+                                await win.hide();
+                            } else {
+                                await win.show();
+                                await win.setFocus();
+                            }
+                        }
+                    });
+                    console.log('Global shortcut Alt+Space registered');
+                } catch (e) {
+                    console.error('Failed to register global shortcut', e);
+                }
             }
         } catch (e) {
             console.error("Error setting initial size:", e);
