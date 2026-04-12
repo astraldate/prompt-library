@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import promptsData from '../data/prompts-zh.json';
 import { BaseDirectory, readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
 import { ask } from '@tauri-apps/plugin-dialog';
@@ -13,6 +13,14 @@ interface ExpandedPanelProps {
 interface Prompt {
   act: string;
   prompt: string;
+  categoryPath?: string[];
+}
+
+interface CategoryNode {
+  name: string;
+  path: string[];
+  children: CategoryNode[];
+  prompts: Prompt[];
 }
 
 export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
@@ -20,16 +28,115 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const [favorites, setFavorites] = useState<string[]>([]);
   // Unified prompts state: combines initial JSON and user additions/deletions
   const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [expandedCategoryPaths, setExpandedCategoryPaths] = useState<Set<string>>(new Set(['未分类']));
   const [activeTab, setActiveTab] = useState<'favorites' | 'categories' | 'add' | 'settings' | 'handbook'>('categories');
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   
   // New prompt input state
   const [newAct, setNewAct] = useState('');
   const [newPrompt, setNewPrompt] = useState('');
+  const [newCategoryPath, setNewCategoryPath] = useState('');
   const [editingOldAct, setEditingOldAct] = useState<string | null>(null);
 
   const PROMPTS_FILE = 'prompts.json';
   const FAVORITES_FILE = 'favorites.json';
+  const DEFAULT_CATEGORY_PATH = ['未分类'];
+
+  const normalizeCategoryPath = (categoryPath?: string[]) => {
+    const normalized = categoryPath
+      ?.map(part => part.trim())
+      .filter(Boolean);
+
+    return normalized && normalized.length > 0 ? normalized : DEFAULT_CATEGORY_PATH;
+  };
+
+  const parseCategoryPathInput = (value: string) => {
+    const path = value
+      .split('/')
+      .map(part => part.trim())
+      .filter(Boolean);
+
+    return path.length > 0 ? path : DEFAULT_CATEGORY_PATH;
+  };
+
+  const normalizePrompts = (items: Prompt[]) => items.map(item => ({
+    ...item,
+    categoryPath: normalizeCategoryPath(item.categoryPath)
+  }));
+
+  const getLocalStoragePrompts = () => {
+    const savedPrompts = localStorage.getItem('prompts');
+    if (!savedPrompts) return null;
+
+    try {
+      return normalizePrompts(JSON.parse(savedPrompts));
+    } catch (e) {
+      console.error('Failed to parse localStorage prompts', e);
+      return null;
+    }
+  };
+
+  const getLocalStorageFavorites = () => {
+    const savedFavs = localStorage.getItem('favorites');
+    if (!savedFavs) return null;
+
+    try {
+      return JSON.parse(savedFavs) as string[];
+    } catch (e) {
+      console.error('Failed to parse localStorage favorites', e);
+      return null;
+    }
+  };
+
+  const isDefaultPromptSet = (items: Prompt[]) => {
+    const defaults = promptsData as Prompt[];
+    return items.length === defaults.length && items.every((item, index) => (
+      item.act === defaults[index]?.act && item.prompt === defaults[index]?.prompt
+    ));
+  };
+
+  const isDevServerOrigin = () => (
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  );
+
+  const getDefaultPrompts = () => normalizePrompts(promptsData as Prompt[]);
+
+  const getCategoryPathKey = (path: string[]) => path.join('/');
+
+  const buildCategoryTree = (items: Prompt[]): CategoryNode[] => {
+    const rootNodes: CategoryNode[] = [];
+    const nodeMap = new Map<string, CategoryNode>();
+
+    items.forEach(prompt => {
+      const path = normalizeCategoryPath(prompt.categoryPath);
+      let siblings = rootNodes;
+
+      path.forEach((part, index) => {
+        const currentPath = path.slice(0, index + 1);
+        const key = getCategoryPathKey(currentPath);
+        let node = nodeMap.get(key);
+
+        if (!node) {
+          node = {
+            name: part,
+            path: currentPath,
+            children: [],
+            prompts: []
+          };
+          nodeMap.set(key, node);
+          siblings.push(node);
+        }
+
+        if (index === path.length - 1) {
+          node.prompts.push(prompt);
+        }
+
+        siblings = node.children;
+      });
+    });
+
+    return rootNodes;
+  };
 
   // Helper to load data from FS
   const loadData = async () => {
@@ -47,32 +154,46 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
         // writeTextFile handles directory creation if configured correctly, but let's just rely on lazy creation
         
         // 1. Load Prompts
+        const localPrompts = getLocalStoragePrompts();
         const promptsExist = await exists(PROMPTS_FILE, { baseDir: BaseDirectory.AppData });
         if (promptsExist) {
             const content = await readTextFile(PROMPTS_FILE, { baseDir: BaseDirectory.AppData });
-            setPrompts(JSON.parse(content));
+            const fsPrompts = normalizePrompts(JSON.parse(content));
+            const shouldMigrateLocalPrompts = localPrompts && isDefaultPromptSet(fsPrompts) && !isDefaultPromptSet(localPrompts);
+            const loadedPrompts = shouldMigrateLocalPrompts ? localPrompts : fsPrompts;
+
+            setPrompts(loadedPrompts);
+            if (shouldMigrateLocalPrompts) {
+                await writeTextFile(PROMPTS_FILE, JSON.stringify(loadedPrompts), { baseDir: BaseDirectory.AppData });
+            }
         } else {
-            // First run: use default data
-            setPrompts(promptsData as Prompt[]);
-            // Persist it immediately
-            await writeTextFile(PROMPTS_FILE, JSON.stringify(promptsData), { baseDir: BaseDirectory.AppData });
+            const canMigrateLocalPrompts = localPrompts && (!isDefaultPromptSet(localPrompts) || !isDevServerOrigin());
+            const initialPrompts = canMigrateLocalPrompts ? localPrompts : getDefaultPrompts();
+            setPrompts(initialPrompts);
+            if (canMigrateLocalPrompts || !isDevServerOrigin()) {
+                await writeTextFile(PROMPTS_FILE, JSON.stringify(initialPrompts), { baseDir: BaseDirectory.AppData });
+            }
         }
 
         // 2. Load Favorites
+        const localFavorites = getLocalStorageFavorites();
         const favsExist = await exists(FAVORITES_FILE, { baseDir: BaseDirectory.AppData });
         if (favsExist) {
             const content = await readTextFile(FAVORITES_FILE, { baseDir: BaseDirectory.AppData });
             setFavorites(JSON.parse(content));
+        } else if (localFavorites) {
+            setFavorites(localFavorites);
+            await writeTextFile(FAVORITES_FILE, JSON.stringify(localFavorites), { baseDir: BaseDirectory.AppData });
         }
     } catch (e) {
         console.error("Failed to load data from FS", e);
         // Fallback to localStorage if FS fails (e.g. web preview)
-        const savedPrompts = localStorage.getItem('prompts');
-        if (savedPrompts) setPrompts(JSON.parse(savedPrompts));
-        else setPrompts(promptsData as Prompt[]);
+        const savedPrompts = getLocalStoragePrompts();
+        if (savedPrompts) setPrompts(savedPrompts);
+        else setPrompts(getDefaultPrompts());
         
-        const savedFavs = localStorage.getItem('favorites');
-        if (savedFavs) setFavorites(JSON.parse(savedFavs));
+        const savedFavs = getLocalStorageFavorites();
+        if (savedFavs) setFavorites(savedFavs);
     }
   };
 
@@ -111,21 +232,26 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
     if (!newAct.trim() || !newPrompt.trim()) return;
     
     let updatedPrompts = [...prompts];
+    const savedPrompt = {
+        act: newAct.trim(),
+        prompt: newPrompt,
+        categoryPath: parseCategoryPathInput(newCategoryPath)
+    };
     
     if (editingOldAct) {
         // Update existing
         updatedPrompts = updatedPrompts.map(p => 
-            p.act === editingOldAct ? { act: newAct, prompt: newPrompt } : p
+            p.act === editingOldAct ? savedPrompt : p
         );
         // If name changed, update favorites too
-        if (editingOldAct !== newAct && favorites.includes(editingOldAct)) {
-            const newFavs = favorites.map(f => f === editingOldAct ? newAct : f);
+        if (editingOldAct !== savedPrompt.act && favorites.includes(editingOldAct)) {
+            const newFavs = favorites.map(f => f === editingOldAct ? savedPrompt.act : f);
             setFavorites(newFavs);
             saveData(FAVORITES_FILE, newFavs);
         }
     } else {
         // Add new
-        updatedPrompts = [{ act: newAct, prompt: newPrompt }, ...prompts];
+        updatedPrompts = [savedPrompt, ...prompts];
     }
     
     setPrompts(updatedPrompts);
@@ -134,6 +260,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
     // Reset
     setNewAct('');
     setNewPrompt('');
+    setNewCategoryPath('');
     setEditingOldAct(null);
     setActiveTab('categories');
   };
@@ -141,6 +268,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const cancelEdit = () => {
       setNewAct('');
       setNewPrompt('');
+      setNewCategoryPath('');
       setEditingOldAct(null);
       setActiveTab('categories');
   };
@@ -148,6 +276,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
   const handleEditPrompt = (p: Prompt) => {
       setNewAct(p.act);
       setNewPrompt(p.prompt);
+      setNewCategoryPath(normalizeCategoryPath(p.categoryPath).join('/'));
       setEditingOldAct(p.act);
       setActiveTab('add');
   };
@@ -215,6 +344,18 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
     ? allPrompts.filter(p => favorites.includes(p.act))
     : filteredPrompts;
 
+  const categoryTree = useMemo(() => buildCategoryTree(filteredPrompts), [filteredPrompts]);
+
+  const toggleCategory = (path: string[]) => {
+    const key = getCategoryPathKey(path);
+    setExpandedCategoryPaths(previous => {
+        const next = new Set(previous);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+    });
+  };
+
   const handlePromptClick = async (promptText: string) => {
     try {
       await navigator.clipboard.writeText(promptText);
@@ -237,6 +378,101 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
         // Fallback for preview or if exit fails
         // alert("Quit action triggered (Native exit only works in built app)");
     }
+  };
+
+  const renderPromptRow = (p: Prompt, level = 0) => (
+    <div key={p.act}
+      onClick={() => handlePromptClick(p.prompt)}
+      onContextMenu={(e) => {
+          e.preventDefault();
+          handleEditPrompt(p);
+      }}
+      style={{
+          padding: '8px',
+          paddingLeft: `${8 + level * 16}px`,
+          borderBottom: '1px solid #f0f0f0',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          transition: 'background 0.2s'
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
+      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+      title={p.prompt}
+    >
+        <span style={{ fontSize: '14px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.act}</span>
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            <span
+                onClick={(e) => {
+                    e.stopPropagation();
+                    deletePrompt(p.act);
+                }}
+                title="Delete"
+                style={{
+                    cursor: 'pointer',
+                    color: '#ef4444',
+                    fontSize: '16px',
+                    padding: '0 4px',
+                    opacity: 0.6
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+            >
+            🗑️
+            </span>
+            <span
+              onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(p.act);
+              }}
+              style={{ cursor: 'pointer', color: favorites.includes(p.act) ? '#fbbf24' : '#e5e7eb', fontSize: '18px', marginLeft: '8px' }}
+            >
+            ★
+            </span>
+        </div>
+    </div>
+  );
+
+  const getCategoryPromptCount = (node: CategoryNode): number => (
+    node.prompts.length + node.children.reduce((count, child) => count + getCategoryPromptCount(child), 0)
+  );
+
+  const renderCategoryNode = (node: CategoryNode, level = 0) => {
+    const key = getCategoryPathKey(node.path);
+    const isSearchActive = searchTerm.trim().length > 0;
+    const isExpanded = isSearchActive || expandedCategoryPaths.has(key);
+
+    return (
+      <div key={key}>
+        <div
+          onClick={() => toggleCategory(node.path)}
+          style={{
+            padding: '7px 8px',
+            paddingLeft: `${8 + level * 16}px`,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: '#444',
+            fontWeight: 600,
+            borderBottom: '1px solid #f5f5f5',
+            userSelect: 'none'
+          }}
+          title={isExpanded ? 'Collapse category' : 'Expand category'}
+        >
+          <span style={{ width: '12px', color: '#777' }}>{isExpanded ? '▾' : '▸'}</span>
+          <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.name}</span>
+          <span style={{ color: '#999', fontSize: '12px', fontWeight: 400 }}>{getCategoryPromptCount(node)}</span>
+        </div>
+        {isExpanded && (
+          <>
+            {node.children.map(child => renderCategoryNode(child, level + 1))}
+            {node.prompts.map(prompt => renderPromptRow(prompt, level + 1))}
+          </>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -277,6 +513,7 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                 // If editing, ask or reset? Let's just reset if clicking add explicitly
                 setNewAct('');
                 setNewPrompt('');
+                setNewCategoryPath('');
                 setEditingOldAct(null);
                 setActiveTab('add');
             }}
@@ -432,6 +669,12 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
                     onChange={(e) => setNewAct(e.target.value)}
                     style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
                 />
+                <input
+                    placeholder="Category path (e.g. 写作/英语/雅思)"
+                    value={newCategoryPath}
+                    onChange={(e) => setNewCategoryPath(e.target.value)}
+                    style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
+                />
                 <textarea 
                     placeholder="Enter prompt content..." 
                     value={newPrompt}
@@ -463,59 +706,10 @@ export const ExpandedPanel: React.FC<ExpandedPanelProps> = ({ onCollapse }) => {
         ) : (
             displayPrompts.length === 0 ? (
                 <div style={{ textAlign: 'center', color: '#999', marginTop: '20px' }}>No prompts found</div>
+            ) : activeTab === 'categories' ? (
+                categoryTree.map(node => renderCategoryNode(node))
             ) : (
-                displayPrompts.map((p) => (
-                <div key={p.act} 
-                onClick={() => handlePromptClick(p.prompt)}
-                onContextMenu={(e) => {
-                    e.preventDefault();
-                    handleEditPrompt(p);
-                }}
-                style={{ 
-                    padding: '8px', 
-                    borderBottom: '1px solid #f0f0f0', 
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    transition: 'background 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                title={p.prompt} // Use title attribute for hover preview
-                >
-                    <span style={{ fontSize: '14px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.act}</span>
-                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                    <span 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            deletePrompt(p.act);
-                        }}
-                        title="Delete"
-                        style={{ 
-                            cursor: 'pointer', 
-                            color: '#ef4444', 
-                            fontSize: '16px', 
-                            padding: '0 4px',
-                            opacity: 0.6
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
-                    >
-                    🗑️
-                    </span>
-                    <span 
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFavorite(p.act);
-                    }}
-                    style={{ cursor: 'pointer', color: favorites.includes(p.act) ? '#fbbf24' : '#e5e7eb', fontSize: '18px', marginLeft: '8px' }}
-                    >
-                    ★
-                    </span>
-                </div>
-                </div>
-                ))
+                displayPrompts.map((p) => renderPromptRow(p))
             )
         )}
       </div>
